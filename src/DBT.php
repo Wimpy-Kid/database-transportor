@@ -1,6 +1,6 @@
 <?php
 
-namespace cherrylu\transportor;
+namespace App\Services;
 
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Query\Builder;
@@ -35,9 +35,10 @@ class DBT {
 	private $targetLink;
 
 	private $tempColumns = []; // maps 中定义的临时字段
+	private $handleFunctions = []; // 迁移完成后需要运行的函数
 	private $deleteTempColumns = []; // 完成迁移后需要删除的临时字段
 	private $seedTables = []; // 种子表——所有字段都不依赖于其他表的数据表
-//	private $x_map = []; // 每张 target 表需要依赖的 original 表, 以及需要依赖的其他 target 表
+	//	private $x_map = []; // 每张 target 表需要依赖的 original 表, 以及需要依赖的其他 target 表
 
 	/**
 	 * 新旧数据库字段对应关系
@@ -109,20 +110,20 @@ class DBT {
 
 	private function transporter($table_name, $safety = 0) {
 		if ( $safety >= $this->safety ) {
-		    throw new \Exception("递归层级过深，请检查代码是否有误！");
+			throw new \Exception("递归层级过深，请检查代码是否有误！");
 		}
 		if ( in_array($table_name, $this->seed) || (!empty($this->maps[$table_name]["target_table"]) && in_array($this->maps[$table_name]["target_table"], $this->seed) ) ) {
-		    return true;
+			return true;
 		}
 		if ( empty($this->finished[ $table_name ]) ) {
 			$map = $this->maps[$table_name];
 
 			if ( !empty($map["transport_after"]) ) {
-			    $this->transporter($map["transport_after"], ++$safety);
+				$this->transporter($map["transport_after"], ++$safety);
 			}
 
 			if ( empty($map["target_table"]) ) {
-			    $table_true_name = $table_name;
+				$table_true_name = $table_name;
 			} else {
 				$table_true_name = $map["target_table"];
 			}
@@ -160,6 +161,7 @@ class DBT {
 							}
 						}
 					}
+					empty($map["order"]) || $this->originalCollection[$table_name] = $this->originalCollection[$table_name]->orderBy($map["order"]["order_by"], $map["order"]["direction"] ?? "asc");
 					$this->originalCollection[$table_name] = $this->originalCollection[$table_name]
 						->skip($i)->take($this->chunk)
 						->get();
@@ -170,7 +172,7 @@ class DBT {
 						if ( is_string($column_define) ) { // 普通映射
 							$this->sourceExtractor($table_name, ["original"=>$column_define], $target_column);
 						} elseif ( is_array($column_define) ) {
-							if ( isset($column_define["default"]) ) { // 字段设定默认值
+							if ( count($column_define) === 1 && isset($column_define["default"]) ) { // 字段设定默认值
 								$this->dataInjector($table_name, $target_column, $column_define["default"]);
 							} elseif ( !empty($column_define["original"]) ) {
 								$this->sourceExtractor($table_name, $column_define, $target_column);
@@ -215,6 +217,8 @@ class DBT {
 	 * @throws \Exception
 	 */
 	private function referExtractor($target_table, $target_column, $refer) {
+		$default_value = $this->maps[$target_table]["columns"][$target_column]["default"] ?? null;
+
 		if ( $refer["search_source"] == "target" ) {
 			if ( empty($this->finished[$refer["search_table"]]) ) {
 				$this->transporter($refer["search_table"]);
@@ -249,23 +253,23 @@ class DBT {
 				} else {
 					$according_datum = $refer["pre_format"](rtrim($insert_datum[$refer["according_column"]]));
 				}
-				$insert_datum[ $target_column ] = $format_data[ $according_datum ] ?? null;
+				$insert_datum[ $target_column ] = $format_data[ $according_datum ] ?? $default_value;
 			}unset($insert_datum);
 		} else {
-//			if ( $refer["search_source"] == "target" ) {
-//				$table_true_name = $this->maps[$refer["search_table"]]["target_table"] ?? $refer["search_table"];
-//				$refer_query = $this->targetLink->table($table_true_name);
-//			} else {
-//				$refer_query = $this->originalLink->table($refer["search_table"]);
-//			}
-//			if ( !empty($refer["extra_conditions"]) ) {
-//				$refer_query = $this->nestQuery($refer_query, $refer["extra_conditions"]);
-//			}
+			//			if ( $refer["search_source"] == "target" ) {
+			//				$table_true_name = $this->maps[$refer["search_table"]]["target_table"] ?? $refer["search_table"];
+			//				$refer_query = $this->targetLink->table($table_true_name);
+			//			} else {
+			//				$refer_query = $this->originalLink->table($refer["search_table"]);
+			//			}
+			//			if ( !empty($refer["extra_conditions"]) ) {
+			//				$refer_query = $this->nestQuery($refer_query, $refer["extra_conditions"]);
+			//			}
 			foreach ( $this->insertData[ $target_table ] as &$insert_datum ) {
 				$temp_refer_query = clone $refer_query;
 				foreach ( $refer["according_column"] as $num => $according_column ) {
 					if ( empty($refer["pre_format"]) ) {
-					    $according_datum = $insert_datum[$according_column];
+						$according_datum = $insert_datum[$according_column];
 					} else {
 						$according_datum = $refer["pre_format"]($insert_datum[$according_column]);
 					}
@@ -293,25 +297,26 @@ class DBT {
 		$method = str_replace(" ", "", strtolower($method));
 		switch ( $method ) {
 			case "=" :
-			case "like" :
+
 			case ">" :
 			case "<" :
 			case "<>" :
 			case "!=" :
 				if ( is_null($search_value) ) {
-				    if ( in_array($method, ["<>", "!="]) ) {
-					    $query = $query->whereNotNull($search_column);
-				    } elseif ($method == "=") {
-					    $query = $query->whereNull($search_column);
-				    } else {
-				    	$err = "筛选条件有误！ " . "search_column：$search_column; method：$method; search_value：$search_value sql：".$query->toSql();
-				    	throw new \Exception($err);
-				    }
+					if ( in_array($method, ["<>", "!="]) ) {
+						$query = $query->whereNotNull($search_column);
+					} elseif ($method == "=") {
+						$query = $query->whereNull($search_column);
+					} else {
+						$err = "筛选条件有误！ " . "search_column：$search_column; method：$method; search_value：$search_value sql：".$query->toSql();
+						throw new \Exception($err);
+					}
 				} else {
 					$query = $query->where($search_column, $method, $search_value);
 				}
 				break;
-			case "notlike" : $query = $query->whereRaw($search_column . " NOT LIKE " . $search_value); break;
+			case "like" : $query = $query->where($search_column, "like", $search_value); break;
+			case "notlike" : $query = $query->whereRaw($search_column . " NOT LIKE '" . $search_value . "'"); break;
 			case "notin" : $query = $query->whereNotIn($search_column, $search_value); break;
 			case "in" : $query = $query->whereIn($search_column, $search_value); break;
 			case "between" : $query = $query->whereBetween($search_column, $search_value); break;
@@ -322,6 +327,7 @@ class DBT {
 	}
 
 	private function sourceExtractor($target_table, $column_define, $target_column) {
+		$default_value = $column_define["default"] ?? null;
 		$original_column = $column_define["original"] ?? "";
 		foreach ( $this->originalCollection[$target_table] as $i => $source ) {
 			$data = null;
@@ -335,12 +341,12 @@ class DBT {
 							$this->insertData[$target_table][$i][$item["target_column"]] = $data[$item["source_key"]];
 						}
 					}
-					$data = $data[$column_define["original"]];
+					$data = $data[$column_define["original"]] ?? $default_value;
 				} else {
-					$data = $column_define["function"]($source);
+					$data = ($column_define["function"]($source)) ?? $default_value;
 				}
 			} else {
-				$data = $source->$original_column;
+				$data = $source->$original_column ?? $default_value;
 			}
 			$this->insertData[$target_table][$i][$target_column] = $data;
 		}
@@ -358,7 +364,13 @@ class DBT {
 			foreach ( $this->tempColumns as $columns ) {
 				foreach ( $columns as $column ) {
 					if ( Schema::connection($this->target)->hasColumn($column["table"], $column["column"]) ) {
-						throw new \Exception(" {$column['table']}表中存在同名字段{$column['column']} ");
+						if ( $column["rebuild"] ) {
+							Schema::connection($this->target)->table($column["table"], function (Blueprint $table) use ($column) {
+								$table->dropColumn($column["column"]);
+							});
+						} else {
+							throw new \Exception(" {$column['table']}表中存在同名字段{$column['column']} ");
+						}
 					}
 					Schema::connection($this->target)->table($column["table"], function (Blueprint $table) use ($column) {
 						$table->string($column["column"])->nullable();
@@ -402,9 +414,9 @@ class DBT {
 
 		for ( $i = 0; $i < $all; $i = $i + $this->chunk ) {
 			$one_data = $one_link->table($middle["one"]["refer_table"])
-	                             ->skip($i)
-	                             ->take($this->chunk)
-	                             ->get([$middle["one"]["wanted_column"], $middle["one"]["according_column"]]);
+			                     ->skip($i)
+			                     ->take($this->chunk)
+			                     ->get([$middle["one"]["wanted_column"], $middle["one"]["according_column"]]);
 			foreach ( $one_data as $one_datum ) {
 				$according_column = $middle["one"]["according_column"];
 				$according_column = $one_datum->$according_column;
@@ -439,7 +451,7 @@ class DBT {
 	private function checkSeed() {
 		foreach ( $this->seed as $seed ) {
 			if ( DB::connection($this->target)->table($seed)->count() == 0 ) {
-			    throw new \Exception("$seed 中没有初始数据！");
+				throw new \Exception("$seed 中没有初始数据！");
 			}
 		}
 	}
@@ -514,21 +526,18 @@ class DBT {
 				}
 				if ( is_array($define) ) {
 					if ( !empty($define["delete_after_transport"]) ) { // 提取迁移后需要删除的字段(临时字段)
-						if ( empty($map["target_table"]) ) {
-						    $delete_table = $table_name;
-						} else {
-							$delete_table = $map["target_table"];
-						}
-						$this->tempColumns[$delete_table][] = ["table"=>$delete_table, "column" => $column_name];
+						$delete_table = empty($map["target_table"]) ? $table_name : $map["target_table"];
+						$this->tempColumns[$delete_table][] = ["table"=>$delete_table, "column" => $column_name, "rebuild" => !empty($define["rebuild"]) ];
 					}
 					if ( !empty($define["refer"]) ) {
 						$is_seed = false;
 					}
-//					$this->x_map[ $table_name ]["refer_table"] = $define["refer"]["search_table"];
+					//					$this->x_map[ $table_name ]["refer_table"] = $define["refer"]["search_table"];
 				} else {
 					//
 				}
 			}
+			empty($map["run_after_transport"]) || $this->handleFunctions[] = $map["run_after_transport"];
 			$is_seed && $this->seedTables[] = $table_name;
 		}
 	}
@@ -537,12 +546,13 @@ class DBT {
 	 * 导入完成后删除临时字段
 	 */
 	public function __destruct() {
+		foreach ( $this->handleFunctions as $handle_function ) {
+			$handle_function();
+		}
 		foreach ( $this->deleteTempColumns as $columns ) {
-			foreach ( $columns as $column ) {
-				Schema::connection($this->target)->table($column["table"], function (Blueprint $table) use ($column) {
-					$table->dropColumn($column["column"]);
-				});
-			}
+			Schema::connection($this->target)->table($columns["table"], function (Blueprint $table) use ($columns) {
+				$table->dropColumn($columns["column"]);
+			});
 		}
 	}
 
