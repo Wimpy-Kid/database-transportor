@@ -5,18 +5,18 @@
 
 ### 目录
 -  [安装](#install)
-- [使用](#manual)
-  - [基础迁移](#basic)
+
+- [基础迁移](#basic)
     - [一对一迁移](#basic-common)
     - [带默认值的迁移 - default](#basic-with-default)
     - [迁移前的预处理 - function](#basic-preformat)
 	- [带查询条件的迁移 - extra_conditions](#basic-extra-conditions)
- - [引用迁移](#refer)
+- [引用迁移](#refer)
 	-  [单引用迁移 - refer](#refer-single)
 	-  [单引用迁移-引用多字段 - refer-mulitfield](#refer-single-mulitfield)
 	-  [多引用迁移 - refers](#refer-mulit)
 
-  - [多对多迁移](#many2many)
+- [多对多迁移](#many2many)
 <br /><br />
 
 <h3 id="install">安装</h3>
