@@ -5,18 +5,18 @@
 
 ### 目录
 -  [安装](#install)
--  [使用](#manual)
-  1. [基础迁移](#basic)
-    1. [一对一迁移](#basic-common)
-    2. [带默认值的迁移 - default](#basic-with-default)
-    3. [迁移前的预处理 - function](#basic-preformat)
-	4. [带查询条件的迁移 - extra_conditions](#basic-extra-conditions)
-  2. [引用迁移](#refer)
-	1.  [单引用迁移 - refer](#refer-single)
-	2.  [多引用迁移 - refers](#refer-mulit)
-  3. [拆表迁移](#basic)
-  4. [合表迁移](#basic)
-  5. [多对多迁移](#basic)
+- [使用](#manual)
+  - [基础迁移](#basic)
+    - [一对一迁移](#basic-common)
+    - [带默认值的迁移 - default](#basic-with-default)
+    - [迁移前的预处理 - function](#basic-preformat)
+	- [带查询条件的迁移 - extra_conditions](#basic-extra-conditions)
+ - [引用迁移](#refer)
+	-  [单引用迁移 - refer](#refer-single)
+	-  [单引用迁移-引用多字段 - refer-mulitfield](#refer-single-mulitfield)
+	-  [多引用迁移 - refers](#refer-mulit)
+
+  - [多对多迁移](#many2many)
 <br /><br />
 
 <h3 id="install">安装</h3>
@@ -164,6 +164,8 @@
 
 <h4 id="refer">2.引用迁移</h4>
 
+##### 2.1 单引用迁移 - refer
+
 <p id="refer-single"></p>
 
 新表 new_roles:
@@ -177,8 +179,6 @@
 |---|---|---|
 | <table><tr><th>id<th>name<th>role_name<tr><td>1<td>张三<td>管理员<tr><td>2<td>李四<td>用户<tr><td>3<td>王五<td>黑户</table>  |=>|<table><tr><th>id<th>name<th>role_id<tr><td>1<td>张三<td>1<tr><td>2<td>李四<td>2<tr><td>3<td>王五<td>0</table>|
 
-##### 2.1 单引用迁移 - refer
-
 ```php
   $maps = [
     "new_users" => [
@@ -186,14 +186,19 @@
       "columns" => [
         "id"  => "id",
         "username" => "name",
+        "temp_role_name" => [
+          "original" => "role_name",
+          "delete_after_transport" => true,
+          "rebuild" => true,
+        ],
         "role_id" => [
           "refer" => [ // 单引用
             "search_source" => "target", // 如果数据源为旧表时，用original即可
-            "search_table" => "client_file_types",
-            "search_column" => "name_en",
-            "according_column" => "temp_file_title",
+            "search_table" => "new_roles",
+            "search_column" => "role_name",
+            "according_column" => "temp_role_name",
             "wanted_column" => "id",
-            
+
             // 未定义此项时，直接迁移 id 的原值。$data是固定格式，为 "wanted_column" 定义的对应引用字段，此处为 id
             "pre_format" => function ($data) {
                 // 查询前去除前后的无关字符
@@ -209,10 +214,53 @@
 
 <br /><br />
 
+##### 2.2 单引用迁移-引用多字段 - refer-mulitfield
+<p id="refer-single-mulitfield"></p>
+
+旧表 records:
+<table><tr><th>id</th><th>created_at</th><th>amount</th></tr><tr><td>132</td><td style="background:#ff6161">2020-01-12</td><td style="background:#ff6161">3000</td></tr><tr><td>322</td><td style="background:#0088cc">2020-01-15</td><td style="background:#0088cc">3100</td></table>
+
+| 旧表 old_pay  || 新表 new_pay |
+|---|---|---|
+| <table><tr><th>id</th><th>total</th><th>create_date</th></tr><tr><td>1</td><td style="background:#ff6161">3000</td><td style="background:#ff6161">2020-01-12</td></tr><tr><td>2</td><td style="background:#0088cc">3100</td><td style="background:#0088cc">2020-01-15</td></tr></table>  |=>|<table><tr><th>id</th><th>bill_id</th></tr><tr><td>1</td><td>132</td></tr><tr><td>2</td><td>322</td></tr></table>|
+
+```php
+  $maps = [
+    "new_users" => [
+      "original_table" => "old_users",
+      "columns" => [
+        "id"  => "id",
+        "temp_total" => [
+          "original" => "total",
+          "delete_after_transport" => true,
+          "rebuild" => true,
+        ],
+        "temp_create_date" => [
+          "original" => "create_date",
+          "delete_after_transport" => true,
+          "rebuild" => true,
+        ],
+        "role_id" => [
+          "refer" => [ // 单引用
+            "according_column" => ["temp_total", "temp_create_date"],
+            "search_source" => "original",
+            "search_table" => "records",
+            "search_column" => ["amount", "created_at"],
+            "wanted_column" => "bill_id",
+          ]
+        ],
+        "default" => 0,
+      ],
+    ]
+  ];
+```
+
+<br /><br />
+
 <p id="refer-multi"></p>
 
-##### 2.2 多引用迁移 - refers
-新表 accounts:
+##### 2.3 多引用迁移 - refers
+旧表 accounts:
 
 | id  |  user_id  | fee_type_id | amount |
 | ------------ | ------------ | ------------ | ------------ |
@@ -221,7 +269,7 @@
 
 | 旧表 old_users  || 新表 new_users |
 |---|---|---|
-| <table><tr><th>id</th><th>name</th><tr><td>1<td>张三</td></table>  |=>|<table><tr><th>id</th><th>name</th><th>amount</th><tr><td>1</td><td>张三</td><td>300</td></table>|
+| <table><tr><th>id</th><th>name</th><tr><td>1<td>张三</td></table>  |=>|<table><tr><th>id</th><th>username</th><th>amount</th><tr><td>1</td><td>张三</td><td>300</td></table>|
 
 ```php
 $maps = [
@@ -233,7 +281,7 @@ $maps = [
       "amount" => [
         "refers" => [
           "according_column" => "id",
-          "search_source" => "target",
+          "search_source" => "original",
           "search_table" => "accounts",
           "search_column" => "user_id",
           "processor" => function ($data) {
@@ -247,6 +295,51 @@ $maps = [
       ],
     ]
   ]
+];
+```
+
+<p id="many2many"></p>
+<h4 id="refer">3.多对多迁移</h4>
+
+新表 types
+
+| id  |  type_name  |
+| ------------ | ------------ |
+|  1 |  类型_1  |
+|  2 |  类型_2  |
+|  3 |  类型_3  |
+
+| 旧表 old_materials  ||  |
+|---|---|---|
+| <table><tr><th>id</th><th>name</th><th>type_id</th><tr><td>1<td>A4纸</td><td>1,2,3</td></table>  |=>| 新表 new_materials<table><tr><th>id</th><th>name</th></tr><tr><td>1</td><td>A4纸</td></tr></table>新表 material_types<table><tr><th>material_id</th><th>type_id</th></tr><tr><td>1</td><td>1</td></tr><tr><td>1</td><td>2</td></tr><tr><td>1</td><td>3</td></tr></table>|
+
+>  此处只给出中间表```material_types```的$maps,```new_materials```请参照上文
+
+```php
+$maps = [
+  "material_types"     => [
+		"original_table" => null,
+		"columns" => [
+			"material_id" => null,
+			"type_id"     => null,
+		],
+		"middle"  => [
+			"one"  => [
+				"refer_table"      => "new_materials",
+				"wanted_column"    => "id",
+				"fill_column"      => "material_id",
+				"according_column" => "type_temp", // 定义 new_materials 的 maps 时，将原来的 type_id 暂存为 type_temp
+				"pre_format"       => function ($data) { return explode(',', trim($data)); }
+			],
+			"many" => [
+				"fill_column"      => "type_id",
+				"refer_table"      => "types",
+				"wanted_column"    => "id",
+				"search_column"    => "id",
+				"search_method"    => "in",
+			],
+		],
+	]
 ];
 ```
 
