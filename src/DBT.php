@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services;
+namespace CherryLu\DatabaseTransportor;
 
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Query\Builder;
@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Class DBT database transporter
+ * Class DBT database transportor
  */
 class DBT {
 

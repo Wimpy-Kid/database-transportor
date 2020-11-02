@@ -18,10 +18,9 @@
             "email": "1002161225@qq.com"
         }
     ],
-    "minimum-stability": "stable",
     "autoload": {
         "psr-4": {
-            "cherrylu\\database-transportor\\": "src"
+            "CherryLu\\DatabaseTransportor\\": "src"
         }
     }
 }
