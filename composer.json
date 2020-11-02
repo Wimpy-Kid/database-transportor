@@ -1,7 +1,6 @@
 {
     "name": "cherrylu/database-transportor",
     "description": "database transportor based on laravel, the tool would be useful if you want to rebuild database and carry the old data",
-    "type": "composer-plugin",
     "require": {
         "illuminate/database": ">=5.5",
         "illuminate/support": ">=5.5"
