@@ -19,10 +19,10 @@
             "email": "1002161225@qq.com"
         }
     ],
-    "minimum-stability": "dev",
+    "minimum-stability": "stable",
     "autoload": {
         "psr-4": {
-            "cherrylu\\transportor\\": "src"
+            "cherrylu\\database-transportor\\": "src"
         }
     }
 }
