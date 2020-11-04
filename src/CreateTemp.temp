@@ -1,0 +1,39 @@
+<?php
+
+namespace %NAMESPACE%;
+
+use Illuminate\Support\Facades\DB;
+use CherryLu\DatabaseTransportor\DBT;
+
+class %CLASSNAME% {
+
+    protected $DBT;
+
+    private $_DBMap = [];
+
+    public function __construct(DBT $DBT) {
+        $this->DBT = $DBT;
+    }
+
+    public function transport() {
+        set_time_limit(0);
+
+        try {
+            DB::beginTransaction();
+
+            $this->DBT->setMaps($this->_DBMap);
+            
+            // 其他处理代码
+            
+            $this->DBT->doTransport();
+
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            report($e);
+            return $e;
+        }
+        return "Success!";
+    }
+
+}
