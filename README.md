@@ -6,6 +6,8 @@
 ### 目录
 -  [安装](#install)
 
+-  [命令](#commands)
+
 - [基础迁移](#basic)
     - [一对一迁移](#basic-common)
     - [带默认值的迁移 - default](#basic-with-default)
@@ -21,7 +23,22 @@
 
 <h3 id="install">安装</h3>
 
-`composer require cherrylu/database-transportor`<br /><br /><br />
+安装：`composer require cherrylu/database-transportor`
+
+然后在`config\app.php`的`providers`中添加`CherryLu\DatabaseTransportor\DatabaseTransportorServiceProvider::class`
+
+
+<h3 id="commands">命令</h3>
+
+> 创建迁移文件命令：`php artisan make:transportor 文件名(如UserTransportor)`
+
+该命令将会在`database\seeders\transportors`路径下创建对应文件，在初始使用时也会同时创建`Transportor.php`文件
+
+> 执行迁移命令：`php artisan transport [--class=]`
+
+未指定迁移文件时，将会迁移`Transportor`中`handle`方法传入的类
+
+
 
 <h3 id="manual">使用</h3>
 
