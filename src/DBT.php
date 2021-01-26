@@ -5,6 +5,7 @@ namespace CherryLu\DatabaseTransportor;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -109,6 +110,7 @@ class DBT {
 	}
 
 	private function transporter($table_name, $safety = 0) {
+        $safety++;
 		if ( $safety >= $this->safety ) {
 			throw new \Exception("递归层级过深，请检查代码是否有误！");
 		}
@@ -182,8 +184,19 @@ class DBT {
 								}
 								$refers[$target_column] = $column_define["refer"];
 							}
-						}
+						} elseif ( !empty($column_define["refers"]) ) {
+                            if ( $column_define["refers"]["search_source"] == "target" && $column_define["refers"]["search_table"] && empty($this->finished[$column_define["refers"]["search_table"]]) ) {
+                                $this->transporter($column_define["refers"]["search_table"], $safety);
+                            }
+                            $multi_refers[$target_column] = $column_define["refers"];
+                        }
 					}
+
+                    if ( isset($multi_refers) ) {
+                        foreach ( $multi_refers as $target_column => $multi_refer ) {
+                            $this->multiReferExtractor($table_name, $target_column, $multi_refer);
+                        }
+                    }
 
 					if ( isset($refers) ) {
 						foreach ( $refers as $target_column => $refer ) {
@@ -209,7 +222,50 @@ class DBT {
 		}
 	}
 
-	/**
+    public function multiReferExtractor($target_table, $target_column, $multi_refer) {
+        $default_value = $this->maps[$target_table]["columns"][$target_column]["default"] ?? null;
+
+        if ( $multi_refer["search_source"] == "target" ) {
+            if ( empty($this->finished[$multi_refer["search_table"]]) ) {
+                $this->transporter($multi_refer["search_table"]);
+            }
+            $table_true_name = $this->maps[$multi_refer["search_table"]]["target_table"] ?? $multi_refer["search_table"];
+            $refer_query = $this->targetLink->table($table_true_name);
+        } else {
+            $refer_query = $this->originalLink->table($multi_refer["search_table"]);
+        }
+        if ( !empty($multi_refer["extra_conditions"]) ) {
+            $refer_query = $this->nestQuery($refer_query, $multi_refer["extra_conditions"]);
+        }
+
+        $according_data = array_unique(Arr::pluck($this->insertData[$target_table], $multi_refer["according_column"]));
+        if ( !empty($multi_refer["pre_format"]) ) {
+            foreach ( $according_data as $key => $according_datum ) {
+                $according_data[$key] = $multi_refer["pre_format"]($according_datum);
+            }
+        }
+        $refer_data = $refer_query->whereIn($multi_refer["search_column"], $according_data)
+                                  ->get()
+                                  ->groupBy($multi_refer["search_column"]);
+        $format_data = [];
+        foreach ( $refer_data as $key => $datum ) {
+            $format_data[rtrim($key)] = $datum;
+        }
+        foreach ( $this->insertData[ $target_table ] as &$insert_datum ) {
+            if ( empty($refer["pre_format"]) ) {
+                $according_datum = rtrim($insert_datum[$refer["according_column"]]);
+            } else {
+                $according_datum = $refer["pre_format"](rtrim($insert_datum[$refer["according_column"]]));
+            }
+            if ( is_null($format_data[ $according_datum ]) ) {
+                $insert_datum[ $target_column ] = $default_value;
+            } else {
+                $insert_datum[ $target_column ] = $refer["processor"]($format_data[ $according_datum ]);
+            }
+        }unset($insert_datum);
+    }
+
+    /**
 	 * @param $target_table
 	 * @param $target_column
 	 * @param $refer
