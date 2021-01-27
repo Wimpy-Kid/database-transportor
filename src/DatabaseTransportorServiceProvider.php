@@ -17,7 +17,6 @@ class DatabaseTransportorServiceProvider extends ServiceProvider
             $this->commands([
                 Console\CreateCommand::class,
                 Console\TransportCommand::class,
-                
             ]);
         }
         

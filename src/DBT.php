@@ -61,14 +61,8 @@ class DBT {
 		$this->original = $original_db;
 		$this->preload = $preload;
 
-		$this->originalLink = DB::connection($this->original);
-		$this->targetLink = DB::connection($this->target);
-
-		if ( !empty($maps) ) {
-			$this->initDefinition(); // 初始化定义，提取$this->maps中需要的数据
-		}
-
-		$this->preload();
+        $original_db && $this->originalLink = DB::connection($original_db);
+        $target_db && $this->targetLink = DB::connection($target_db);
 	}
 
 	/**
@@ -89,6 +83,14 @@ class DBT {
 	 * @throws \Exception
 	 */
 	public function doTransport() {
+        if ( !empty($maps) ) {
+            $this->initDefinition(); // 初始化定义，提取$this->maps中需要的数据
+        } else {
+            return false;
+        }
+
+        $this->preload();
+
 		if ( !$this->targetLink || !$this->originalLink ) {
 			throw new \Exception("数据库连接错误！");
 		}
@@ -519,19 +521,21 @@ class DBT {
 		$this->maps = $maps;
 	}
 
-	/**
-	 * @param string $original
-	 */
-	public function setOriginal(string $original): void {
-		$this->original = $original;
-	}
+    /**
+     * @param string $original
+     */
+    public function setOriginal(string $original): void {
+        $this->original = $original;
+        $this->originalLink = DB::connection($original);
+    }
 
-	/**
-	 * @param string $target
-	 */
-	public function setTarget(string $target): void {
-		$this->target = $target;
-	}
+    /**
+     * @param string $target
+     */
+    public function setTarget(string $target): void {
+        $this->target = $target;
+        $this->targetLink = DB::connection($target);
+    }
 
 	/**
 	 * @param array $preload
@@ -559,13 +563,6 @@ class DBT {
 	 */
 	public function setSafety(int $safety): void {
 		$this->safety = $safety;
-	}
-
-
-	private function getTable ($string) {
-		$string = explode(".", $string);
-		array_pop($string);
-		return implode(".", $string);
 	}
 
 	private function initDefinition() {

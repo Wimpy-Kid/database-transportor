@@ -13,6 +13,10 @@ class %CLASSNAME% {
 
     public function __construct(DBT $DBT) {
         $this->DBT = $DBT;
+        $this->DBT->setOriginal('pgsql');
+        $this->DBT->setTarget('mysql');
+        $this->DBT->setSeed([]);
+        $this->_DBMap = []; // TODO
     }
 
     public function transport() {
