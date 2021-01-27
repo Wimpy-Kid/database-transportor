@@ -83,10 +83,10 @@ class DBT {
 	 * @throws \Exception
 	 */
 	public function doTransport() {
-        if ( !empty($maps) ) {
-            $this->initDefinition(); // 初始化定义，提取$this->maps中需要的数据
-        } else {
+        if ( empty($this->maps) ) {
             return false;
+        } else {
+            $this->initDefinition(); // 初始化定义，提取$this->maps中需要的数据
         }
 
         $this->preload();
@@ -291,7 +291,7 @@ class DBT {
 		}
 
 		if ( is_string($refer["according_column"]) ) {
-			$according_data = array_unique(array_pluck($this->insertData[$target_table], $refer["according_column"]));
+			$according_data = array_unique(Arr::pluck($this->insertData[$target_table], $refer["according_column"]));
 			if ( !empty($refer["pre_format"]) ) {
 				foreach ( $according_data as $key => $according_datum ) {
 					$according_data[$key] = $refer["pre_format"]($according_datum);
@@ -306,23 +306,18 @@ class DBT {
 				$format_data[rtrim($key)] = $datum;
 			}
 			foreach ( $this->insertData[ $target_table ] as &$insert_datum ) {
-				if ( empty($refer["pre_format"]) ) {
-					$according_datum = rtrim($insert_datum[$refer["according_column"]]);
-				} else {
-					$according_datum = $refer["pre_format"](rtrim($insert_datum[$refer["according_column"]]));
-				}
-				$insert_datum[ $target_column ] = $format_data[ $according_datum ] ?? $default_value;
+                if ( isset($refer["pre_format"]) ) { // 查找前对according进行预格式化
+                    $according_datum = $refer["pre_format"](rtrim($insert_datum[$refer["according_column"]]));
+                } else {
+                    $according_datum = rtrim($insert_datum[$refer["according_column"]]);
+                }
+                if ( isset($refer["format_wanted"]) ) { // 查找后wanted进行格式化
+                    $insert_datum[ $target_column ] = ($refer["format_wanted"]($format_data[ $according_datum ])) ?? $default_value;
+                } else {
+                    $insert_datum[ $target_column ] = $format_data[ $according_datum ] ?? $default_value;
+                }
 			}unset($insert_datum);
 		} else {
-			//			if ( $refer["search_source"] == "target" ) {
-			//				$table_true_name = $this->maps[$refer["search_table"]]["target_table"] ?? $refer["search_table"];
-			//				$refer_query = $this->targetLink->table($table_true_name);
-			//			} else {
-			//				$refer_query = $this->originalLink->table($refer["search_table"]);
-			//			}
-			//			if ( !empty($refer["extra_conditions"]) ) {
-			//				$refer_query = $this->nestQuery($refer_query, $refer["extra_conditions"]);
-			//			}
 			foreach ( $this->insertData[ $target_table ] as &$insert_datum ) {
 				$temp_refer_query = clone $refer_query;
 				foreach ( $refer["according_column"] as $num => $according_column ) {
@@ -335,7 +330,15 @@ class DBT {
 				}
 				$refer_data = $temp_refer_query->first([$refer["wanted_column"]]);
 				$wanted_column = $refer["wanted_column"];
-				$insert_datum[ $target_column ] = $refer_data ? $refer_data->$wanted_column : null;
+				if ( $refer_data ) {
+				    if ( isset($refer["format_wanted"]) ) {
+                        $insert_datum[ $target_column ] = $refer["format_wanted"]($refer_data->$wanted_column);
+				    } else {
+                        $insert_datum[ $target_column ] = $refer_data->$wanted_column;
+                    }
+				} else {
+                    $insert_datum[ $target_column ] = null;
+                }
 			}unset($insert_datum);
 		}
 	}
