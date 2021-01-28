@@ -38,7 +38,7 @@ class TransportCommand extends Command
         } else {
             $mainTansportor = $this->baseNameSpace . '\\' . (pathinfo($this->mainTransportFileName)['filename']);
             if ( class_exists($mainTansportor) ) {
-                $this->laravel->make($mainTansportor)->tansportor();
+                $this->laravel->make($mainTansportor)->transport();
             }
         }
 
